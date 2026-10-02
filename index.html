@@ -3,152 +3,158 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>鍵盤付きブラウザボコーダー</title>
+  <title>本格ブラウザボコーダー</title>
   <style>
     body {
-      background-color: #1a1a1a;
-      color: #fff;
-      font-family: sans-serif;
+      background-color: #111;
+      color: #00ffcc;
+      font-family: monospace;
       text-align: center;
-      margin: 20px;
+      margin: 30px;
     }
-    button#startBtn {
+    button {
       background-color: #00ffcc;
       border: none;
-      padding: 12px 24px;
+      padding: 15px 30px;
       font-size: 18px;
       border-radius: 8px;
       cursor: pointer;
       font-weight: bold;
-      color: #333;
+      color: #111;
       margin-bottom: 20px;
     }
-    /* 鍵盤のスタイル */
+    button:hover { background-color: #00cca3; }
     .keyboard {
       display: flex;
       justify-content: center;
-      margin-top: 20px;
+      margin-top: 30px;
       user-select: none;
     }
     .key {
-      width: 45px;
-      height: 150px;
-      background: white;
+      width: 50px;
+      height: 180px;
+      background: #eee;
       border: 1px solid #333;
-      border-radius: 0 0 5px 5px;
-      margin: 0 2px;
+      border-radius: 0 0 6px 6px;
+      margin: 0 3px;
       cursor: pointer;
       display: flex;
       align-items: flex-end;
       justify-content: center;
-      padding-bottom: 10px;
-      color: #333;
+      padding-bottom: 15px;
+      color: #111;
       font-weight: bold;
       font-size: 14px;
+      transition: background 0.1s;
     }
-    .key:active, .key.active {
+    .key.active {
       background: #00ffcc;
+    }
+    .status {
+      margin: 15px 0;
+      font-size: 16px;
+      color: #fff;
     }
   </style>
 </head>
 <body>
 
-  <h1>鍵盤付きボコーダー🤖</h1>
-  <p>※必ずイヤホンをつけてね！</p>
+  <h1>WEB VOCABORDER 🤖</h1>
+  <div class="status" id="statusMsg">※必ずイヤホン（またはヘッドホン）をつけてね！</div>
   
-  <button id="startBtn">1. マイクをオンにする</button>
-  
-  <p>2. 下の鍵盤を押しながら喋ってみて！</p>
+  <button id="startBtn">マイクとエンジンを起動する</button>
 
-  <!-- 簡易鍵盤（ドレミファソラシド） -->
+  <p>下の鍵盤をマウスで押しながらマイクに向かって喋ってみて！</p>
+
+  <!-- 1オクターブ分の鍵盤 -->
   <div class="keyboard">
-    <div class="key" data-freq="261.63">ド</div>
-    <div class="key" data-freq="293.66">レ</div>
-    <div class="key" data-freq="329.63">ミ</div>
-    <div class="key" data-freq="349.23">ファ</div>
-    <div class="key" data-freq="392.00">ソ</div>
-    <div class="key" data-freq="440.00">ラ</div>
-    <div class="key" data-freq="493.88">シ</div>
-    <div class="key" data-freq="523.25">高ド</div>
+    <div class="key" data-freq="261.63">C4<br>ド</div>
+    <div class="key" data-freq="293.66">D4<br>レ</div>
+    <div class="key" data-freq="329.63">E4<br>ミ</div>
+    <div class="key" data-freq="349.23">F4<br>ファ</div>
+    <div class="key" data-freq="392.00">G4<br>ソ</div>
+    <div class="key" data-freq="440.00">A4<br>ラ</div>
+    <div class="key" data-freq="493.88">B4<br>シ</div>
+    <div class="key" data-freq="523.25">C5<br>高ド</div>
   </div>
 
   <script>
     let audioCtx;
     let micStream;
-    let oscillator;
-    let gainNode;
+    let micSource;
+    let analyser;
+    let carrierOsc;
+    let carrierGain;
+    let processor;
 
     document.getElementById('startBtn').addEventListener('click', async () => {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       }
 
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
       try {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const micSource = audioCtx.createMediaStreamSource(micStream);
+        // マイク入力の取得
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        micSource = audioCtx.createMediaStreamSource(micStream);
 
-        // キャリア音（ボコーダーのベースとなる電子音）
-        oscillator = audioCtx.createOscillator();
-        oscillator.type = 'sawtooth'; 
-        oscillator.frequency.value = 0; // 最初は音を鳴らさない
+        // キャリア音（ロボットのベースとなるノコギリ波シンセ）
+        carrierOsc = audioCtx.createOscillator();
+        carrierOsc.type = 'sawtooth';
+        carrierOsc.frequency.value = 0; // 初期は音なし
 
-        gainNode = audioCtx.createGain();
-        gainNode.gain.value = 0; // 鍵盤を押すまで音量を0にする
+        carrierGain = audioCtx.createGain();
+        carrierGain.gain.value = 0;
 
-        // マイクの音量変化をゲインに掛け合わせる
-        micSource.connect(gainNode.gain);
+        carrierOsc.connect(carrierGain);
+        carrierGain.connect(audioCtx.destination);
+        carrierOsc.start();
 
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
+        // 簡易ボコーダー処理（マイクの音量変化とキャリア音をクロスモジュレーション）
+        const modulatorGain = audioCtx.createGain();
+        modulatorGain.gain.value = 2.5; // マイク感度調整
+        micSource.connect(modulatorGain);
+        modulatorGain.connect(carrierGain.gain);
 
-        oscillator.start();
-
-        // ボタンの切り替え
+        // 状態更新
+        document.getElementById('statusMsg').textContent = "✨ エンジン起動中！鍵盤を押してね";
         const btn = document.getElementById('startBtn');
-        btn.textContent = "マイク準備OK🎤";
+        btn.textContent = "起動完了🎤";
         btn.style.backgroundColor = "#ff4444";
         btn.style.color = "white";
         btn.disabled = true;
 
       } catch (err) {
-        alert('マイクが許可されなかったよ😭');
+        alert('マイクの許可に失敗したよ！');
         console.error(err);
       }
     });
 
-    // 鍵盤を押したときの処理
+    // マウスでの鍵盤操作
     document.querySelectorAll('.key').forEach(key => {
       const freq = parseFloat(key.getAttribute('data-freq'));
 
-      // スマホのタッチ操作対応
-      key.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        playNote(freq, key);
-      });
-      key.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        stopNote(key);
-      });
-
-      // PCのクリック操作対応
-      key.addEventListener('mousedown', () => playNote(freq, key));
-      key.addEventListener('mouseup', () => stopNote(key));
-      key.addEventListener('mouseleave', () => stopNote(key));
+      key.addEventListener('mousedown', () => playVocoder(freq, key));
+      key.addEventListener('mouseup', () => stopVocoder(key));
+      key.addEventListener('mouseleave', () => stopVocoder(key));
     });
 
-    function playNote(freq, keyElement) {
+    function playVocoder(freq, keyElement) {
       if (!audioCtx || audioCtx.state !== 'running') {
-        alert('先に「マイクをオンにする」を押してね！');
+        alert('先に「マイクとエンジンを起動する」を押してね！');
         return;
       }
-      oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(1.0, audioCtx.currentTime); // 音量をON
+      carrierOsc.frequency.setValueAtTime(freq, audioCtx.currentTime);
       keyElement.classList.add('active');
     }
 
-    function stopNote(keyElement) {
+    function stopVocoder(keyElement) {
       if (!audioCtx) return;
-      gainNode.gain.setValueAtTime(0.0, audioCtx.currentTime); // 音量をOFF
+      // 音を完全に止めずに小さくする
+      carrierOsc.frequency.setValueAtTime(0, audioCtx.currentTime);
       keyElement.classList.remove('active');
     }
   </script>
